@@ -6,6 +6,7 @@ import com.willykez.campconnect.data.auth.AuthError
 import com.willykez.campconnect.data.auth.AuthOutcome
 import com.willykez.campconnect.data.auth.CodePurpose
 import com.willykez.campconnect.data.auth.DeviceSession
+import com.willykez.campconnect.data.auth.LiveAuth
 import com.willykez.campconnect.data.auth.PasswordCheck
 import com.willykez.campconnect.data.auth.PasswordProblem
 import com.willykez.campconnect.data.model.AnnouncementPriority
@@ -29,6 +30,7 @@ import com.willykez.campconnect.data.repository.RoomOption
 import com.willykez.campconnect.data.repository.SeedUsers
 import com.willykez.campconnect.data.repository.SessionError
 import com.willykez.campconnect.data.repository.WipeScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -157,6 +159,23 @@ class CampusViewModel(
   ): AuthOutcome =
     repository.auth.signUp(universityId, fullName, email, idNumber, isStaff, programmeOrDepartment, password)
 
+  private val liveAuth = LiveAuth()
+
+  /** True when this build talks to the real backend for sign-in. */
+  val liveBackend: Boolean get() = liveAuth.isAvailable
+
+  /**
+   * The sign-in the screen uses. With real Supabase settings it signs in online (email + password);
+   * otherwise it falls back to the local test accounts.
+   */
+  suspend fun signInSmart(identifier: String, password: String): AuthOutcome {
+    if (!liveAuth.isAvailable) return signIn(identifier, password)
+    return when (val result = liveAuth.signIn(identifier, password)) {
+      is LiveAuth.Outcome.Ok -> repository.auth.startLiveSession(result.profile)
+      is LiveAuth.Outcome.Fail -> AuthOutcome.Failure(result.error)
+    }
+  }
+
   /** [identifier] is a registration/staff number or an email. */
   fun signIn(identifier: String, password: String): AuthOutcome = repository.auth.signIn(identifier, password)
 
@@ -176,6 +195,7 @@ class CampusViewModel(
   }
 
   fun signOut() {
+    viewModelScope.launch { liveAuth.signOutQuietly() }
     repository.signOut()
     resetNavigation()
   }
@@ -220,6 +240,14 @@ class CampusViewModel(
     AuthError.PASSWORD_WEAK -> t(
       "Choose a stronger password.",
       "Chagua nenosiri lenye nguvu zaidi."
+    )
+    AuthError.EMAIL_NOT_CONFIRMED -> t(
+      "Please confirm your email first. Open the message we sent you.",
+      "Tafadhali thibitisha barua pepe yako kwanza. Fungua ujumbe tuliokutumia."
+    )
+    AuthError.NETWORK -> t(
+      "Could not reach the server. Check your internet and try again.",
+      "Imeshindwa kufikia seva. Angalia intaneti yako ujaribu tena."
     )
     AuthError.WRONG_CREDENTIALS -> t("Email or password is not correct.", "Barua pepe au nenosiri si sahihi.")
     AuthError.ACCOUNT_NOT_ACTIVE -> t("Account not active.", "Akaunti haifanyi kazi.")

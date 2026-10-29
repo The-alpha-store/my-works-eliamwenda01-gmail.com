@@ -48,7 +48,9 @@ enum class AuthError {
   ACCOUNT_NOT_ACTIVE,
   CODE_WRONG,
   CODE_EXPIRED,
-  TOO_MANY_ATTEMPTS
+  TOO_MANY_ATTEMPTS,
+  EMAIL_NOT_CONFIRMED,
+  NETWORK
 }
 
 sealed interface AuthOutcome {
@@ -256,6 +258,16 @@ class AuthRepository(private val catalog: CampusCatalog = CampusCatalog()) {
       issueCode(CodePurpose.SECOND_STEP, profile.email)
       return AuthOutcome.NeedCode(CodePurpose.SECOND_STEP, profile.email)
     }
+    return startSession(account)
+  }
+
+  /**
+   * Starts a session for a person who has just signed in with the real backend ([LiveAuth]).
+   * Their profile comes from Supabase; no local password is kept (the empty hash matches nothing).
+   */
+  fun startLiveSession(profile: UserProfile): AuthOutcome {
+    val account = Account(profile = profile, salt = "live", passwordHash = "", emailVerified = true)
+    putAccount(account)
     return startSession(account)
   }
 

@@ -1,5 +1,7 @@
 package com.willykez.campconnect.ui.screens
 
+import kotlinx.coroutines.launch
+
 import androidx.compose.ui.graphics.Brush
 import com.willykez.campconnect.ui.theme.DeepBlueDark
 import androidx.activity.compose.BackHandler
@@ -114,6 +116,7 @@ fun AuthGate(viewModel: CampusViewModel) {
   var codePurpose by remember { mutableStateOf(CodePurpose.VERIFY_EMAIL) }
   var error by remember { mutableStateOf<String?>(null) }
   var notice by remember { mutableStateOf<String?>(null) }
+  val scope = androidx.compose.runtime.rememberCoroutineScope()
 
   fun go(next: AuthPage) {
     error = null
@@ -223,7 +226,7 @@ fun AuthGate(viewModel: CampusViewModel) {
             error = error,
             onSubmit = { email, password ->
               error = null
-              handle(viewModel.signIn(email, password))
+              scope.launch { handle(viewModel.signInSmart(email, password)) }
             },
             onForgot = { notice = null; go(AuthPage.FORGOT) },
             onCreate = { notice = null; go(AuthPage.SIGN_UP) }
@@ -329,7 +332,7 @@ private fun SignInPage(
     )
   }
 
-  val demoModeEnabled = BuildConfig.DEMO_MODE_ENABLED.toBoolean()
+  val demoModeEnabled = BuildConfig.DEMO_MODE_ENABLED
   if (demoModeEnabled) {
     Spacer(modifier = Modifier.height(20.dp))
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {

@@ -7,7 +7,8 @@
 | Database (tables, security rules, quizzes, storage, app-manager functions) | Written. **Not live until you deploy it (steps 1 to 6).** Includes the new `20261027000000_campus_details_maintenance.sql`. |
 | Build settings | `SUPABASE_URL` and `SUPABASE_ANON_KEY` are read from a Gradle property, then an environment variable (GitHub secret), then `.env`. A **release build refuses to build** without real values or with `DEMO_MODE_ENABLED=true`. |
 | Sign-in screen badge | Green "Backend connected" = this build has real settings. Amber "Local test mode" = it does not. |
-| **App data** | **Still on the phone.** `AuthRepository` (sign-in, accounts) and `CampusRepository` (timetable, notices, files, quizzes) keep everything in memory. Only the AI-summary save talks to Supabase. This, not demo mode, is why the app still behaves like a demo. Step 9 is the work that remains. |
+| **Sign-in** | **Live (new).** With real keys, email + password sign in through Supabase Auth and the profile is read from `profiles`. Registration, codes, password reset and registration-number sign-in are still local. |
+| **Rest of the app data** | **Still on the phone.** `AuthRepository` (sign-in, accounts) and `CampusRepository` (timetable, notices, files, quizzes) keep everything in memory. Only the AI-summary save talks to Supabase. This, not demo mode, is why the app still behaves like a demo. Step 9 is the work that remains. |
 
 Setting the keys makes the build "connected". It does **not** by itself move students, timetables or files into Supabase. Do not enter real student records until step 9 items 1 to 4 are done and tested.
 
@@ -86,7 +87,7 @@ Actions, Run workflow, `function_name = campus-wipe-files`. (The dropdown also l
 
 ## 9. What still has to be built in the app
 The database is ready; the app must talk to it. Both repositories are synchronous and in-memory today, so each step is a refactor to suspend functions plus tests. In this order:
-1. **Sign in, sign up, sign out, session** through `SupabaseClient` (`signUp`, `signIn`, `refresh`, `getProfile`), replacing local accounts in `AuthRepository`. Store the refresh token with EncryptedSharedPreferences/Keystore.
+1. **Sign in is done (email + password).** Still to do: sign up, email code, reset password, number lookup, refresh-token storage. Use `SupabaseClient` (`signUp`, `signIn`, `refresh`, `getProfile`), replacing local accounts in `AuthRepository`. Store the refresh token with EncryptedSharedPreferences/Keystore.
 2. **Campuses, programmes, courses** from Supabase; owner console via `platform_campus_summary`, `platform_set_maintenance`, `update_campus_details`.
 3. **Timetable, announcements, deadlines, notifications**: read from tables, write through RPC/upsert, cache for offline.
 4. **Files**: upload to the private buckets, open with signed links (this also fixes PDFs that load forever on other phones: today's file addresses only work on the phone that picked the file).

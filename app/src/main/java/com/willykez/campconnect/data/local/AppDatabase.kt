@@ -28,7 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
         override fun onCreate(db: SupportSQLiteDatabase) {
           super.onCreate(db)
           // Sample summaries exist only for demo builds. A real library starts empty.
-          if (BuildConfig.DEMO_MODE_ENABLED.toBoolean()) {
+          if (BuildConfig.DEMO_MODE_ENABLED) {
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
               getInstance(context).processedDocumentDao().insertDocuments(initialAcademicSummaries())
             }
@@ -38,7 +38,7 @@ abstract class AppDatabase : RoomDatabase() {
         override fun onOpen(db: SupportSQLiteDatabase) {
           super.onOpen(db)
           // Phones that installed an earlier build still hold the sample entries: remove them.
-          if (!BuildConfig.DEMO_MODE_ENABLED.toBoolean()) {
+          if (!BuildConfig.DEMO_MODE_ENABLED) {
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
               getInstance(context).processedDocumentDao().deleteSeedDocuments()
             }
