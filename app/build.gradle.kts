@@ -67,6 +67,9 @@ android {
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
+    
+    // Required to support core library desugaring on older API levels
+    multiDexEnabled = true
 
     buildConfigField(
       "boolean",
@@ -137,6 +140,9 @@ android {
   }
 
   compileOptions {
+    // Enable core library desugaring to support java.time APIs on API 24
+    isCoreLibraryDesugaringEnabled = true
+    
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
@@ -171,6 +177,9 @@ secrets {
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
 dependencies {
+  // Core Library Desugaring dependency
+  coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
+
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
   implementation(libs.androidx.activity.compose)
