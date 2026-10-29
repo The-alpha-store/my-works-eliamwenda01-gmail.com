@@ -1,0 +1,338 @@
+﻿CampusConnect: Unified Plan
+A native Android app that puts timetables, official announcements, course materials and deadlines in one trusted place for students and lecturers in Tanzania.
+1. Vision and scope
+Problem. Announcements are scattered across WhatsApp groups, notice boards and word of mouth. Room changes are missed, notes are lost, and deadlines surprise people.
+Promise. If it is in CampusConnect, it is official, current and works on a weak connection.
+Who it serves
+* Students: see what matters today, get alerts, download notes.
+* Lecturers: publish once, reach exactly the right class.
+* Administrators: control accounts, courses and quality.
+Out of scope for the MVP: chat, payments, attendance, video classes, AI features, iOS. Add only after real demand.
+2. Key decisions
+Decision
+	Choice
+	Why
+	Platform
+	Native Android
+	Your strongest skill, best offline behaviour, reliable push through FCM, most Tanzanian students use Android
+	Language
+	Kotlin
+	Modern, concise, first-class Android support
+	UI
+	Jetpack Compose, zero XML layouts
+	Fully programmatic, matches your no-XML rule. Only the unavoidable AndroidManifest stays XML
+	Architecture
+	MVVM + Repository, Hilt for DI
+	Testable, standard, easy to grow
+	Local storage
+	Room (SQLite) + DataStore
+	Offline timetable, announcements and deadlines
+	Backend
+	Supabase (PostgreSQL, Auth, Storage, Row Level Security, Edge Functions)
+	No custom server, free tier for the pilot
+	Client library
+	supabase-kt, Coil for images, WorkManager for sync
+	Official Kotlin client, background sync
+	Notifications
+	Firebase Cloud Messaging, triggered from an Edge Function
+	Reliable on Android, free
+	Admin
+	In-app admin screens for approvals, plus Supabase dashboard for the rest. Small web admin later
+	Keeps MVP small
+	Hosting
+	Supabase cloud, Play Store or direct APK for the pilot
+	Zero server cost to start
+	Fallback: if Compose slows you down, use programmatic Views in Kotlin or Java. The backend and data model do not change.
+3. Languages and tooling used
+* Kotlin: all app code.
+* SQL (PostgreSQL): schema, constraints, RLS policies, triggers.
+* TypeScript (Deno): Edge Functions for push notifications and scheduled reminders.
+* Git and GitHub: version control, GitHub Actions to build and test the APK.
+* Figma or paper sketches: screen design before coding.
+4. Users, roles and permissions
+Accounts start as pending. An administrator approves them as student or lecturer. The role is never trusted from the client.
+Action
+	Student
+	Lecturer
+	Admin
+	View timetable
+	Own enrolled courses
+	Assigned courses
+	All
+	Publish announcement
+	No
+	Assigned courses
+	Campus-wide
+	Upload materials
+	No (can suggest)
+	Assigned courses
+	Approve or remove
+	Create deadlines
+	No
+	Assigned courses
+	Manage
+	Approve accounts
+	No
+	No
+	Yes
+	Manage courses and terms
+	No
+	No
+	Yes
+	5. Features
+MVP (build first)
+1. Accounts and approval: register, verify email, admin approves, role-based home screen.
+2. Timetable: day and week views, venue and time, change and cancel flags, "Changed" badge.
+3. Announcements: lecturers publish to a course, programme or campus; read status; in-app inbox.
+4. Push notifications: new announcement, timetable change, deadline reminder.
+Version 1.1 (after a month of pilot use)
+5. Study materials: PDF upload, admin or lecturer approval, private download, saved offline.
+6. Deadline calendar: assignments and academic events, reminders one day and one hour before.
+7. Search and filters across announcements and materials.
+Later (only if requested)
+Swahili interface, student material submissions, assignment submission, lecturer office hours, exam timetable, campus map, web admin panel.
+6. Offline and low-data design
+Data cost is a real barrier, so this is a core requirement from day one.
+* Every list loads from Room first, then syncs quietly in the background.
+* Fetch only what changed (updated_at greater than last sync).
+* Paginate everything. Never download a whole table.
+* PDFs download only on tap, with file size shown and a "Wi-Fi only" option.
+* Show last-synced time and a clear offline banner instead of errors.
+* Clear the local cache and tokens on logout.
+* Target: home screen usable offline within 2 seconds, app under 15 MB.
+7. Design system
+Feel: clean, calm, academic. Information first, no decoration.
+Colours
+Role
+	Value
+	Primary
+	Deep blue #1F4FD8
+	Primary dark (dark mode)
+	#8FA8FF
+	Accent
+	Warm amber #F59E0B for deadlines and changes
+	Success
+	#16A34A
+	Danger
+	#DC2626 for cancellations
+	Surface (light)
+	#FFFFFF on background #F5F7FB
+	Surface (dark)
+	#14171F on background #0D0F14
+	Support light and dark mode from the start. Dark mode saves battery on OLED phones.
+Typography: Inter or the system font. Title 22sp, section 16sp, body 14sp, caption 12sp. Minimum touch target 48dp.
+Components (build once, reuse): SessionCard, AnnouncementCard, DeadlineChip, StatusBadge, EmptyState, ErrorRetry, SkeletonLoader, BottomNavBar, ConfirmDialog.
+Navigation: bottom bar with five tabs.
+1. Home
+2. Timetable
+3. Materials (appears in 1.1)
+4. Calendar (appears in 1.1)
+5. Profile
+Notifications bell sits at the top of Home.
+Key screens
+Student Home. Greeting ("Habari, Asha"), today's classes as cards with time, room and course code, a highlighted latest announcement, next deadline, and a notifications bell with unread count.
+Timetable. Day strip at the top, session list below, amber "Room changed" and red "Cancelled" badges, pull to refresh, week toggle.
+Announcement detail. Title, author and course, time posted, body, attachments, read confirmation.
+Lecturer Home. Quick actions: Post announcement, Add or change session, Upload material, Add deadline. Below: recent posts and their read counts.
+Publish announcement. Pick audience (course, programme, campus), title, message, optional attachment, preview, publish or save draft.
+Admin Dashboard. Pending approvals count, courses, terms, reported content, audit log.
+Auth screens. Login, register, verify email, pending approval, forgot password.
+8. Language of the interface
+* English first, plain and short.
+* Swahili second, added once the core flows are stable, using Android string resources (the one place resource files are unavoidable, or keep strings in Kotlin objects to stay XML-free).
+* Dates: 19 Oct 2026. Times: 24-hour or 12-hour toggle, always East Africa Time (Africa/Dar_es_Salaam). Store UTC.
+English
+	Swahili
+	Home
+	Nyumbani
+	Timetable
+	Ratiba
+	Announcements
+	Matangazo
+	Materials
+	Vifaa vya masomo
+	Deadlines
+	Tarehe za mwisho
+	Profile
+	Wasifu
+	Notifications
+	Arifa
+	Room changed
+	Chumba kimebadilishwa
+	Cancelled
+	Imeghairiwa
+	Sign in
+	Ingia
+	Retry
+	Jaribu tena
+	Tone: respectful, short sentences, no jargon. Have a Swahili speaker review wording before release.
+9. Database design
+Start single-campus. Add university_id later only if a second institution appears.
+Table
+	Key fields
+	profiles
+	id (= auth user id), full_name, email, role, status, student_number, staff_number
+	programmes
+	id, name, code
+	academic_terms
+	id, name, start_date, end_date
+	courses
+	id, code (unique), title, programme_id
+	course_offerings
+	id, course_id, term_id, lecturer_id, cohort
+	enrollments
+	offering_id, student_id, status, unique (offering_id, student_id)
+	class_sessions
+	id, offering_id, starts_at, ends_at, venue, status (scheduled, changed, cancelled)
+	announcements
+	id, author_id, audience_type, audience_id, title, body, status, published_at
+	notifications
+	id, recipient_id, announcement_id or session_id, read_at, created_at
+	materials
+	id, offering_id, uploader_id, title, storage_path, size, status
+	assignments
+	id, offering_id, title, instructions, due_at, status
+	device_tokens
+	id, user_id, fcm_token, updated_at
+	audit_logs
+	id, actor_id, action, entity_type, entity_id, created_at
+	Rules
+* ends_at must be later than starts_at.
+* Warn on venue overlaps and lecturer clashes.
+* Index offerings, enrollments, publish dates and due dates.
+* course_offerings separates each semester so old data never mixes with current data.
+* Use UUID keys and UTC timestamps.
+10. Security
+1. Row Level Security on every table. Authorization lives in the database, not in hidden buttons.
+2. Students read only their enrolled courses. Lecturers write only to their assigned offerings. Admins manage everything.
+3. Role and status changes are admin-only, enforced by policy and trigger.
+4. Draft announcements and pending materials are invisible to students.
+5. Private storage bucket with short-lived signed URLs.
+6. Never ship the service-role key in the app. Only the public anon key.
+7. Validate upload type (PDF), size limit (for example 10 MB) and storage path.
+8. Audit log for approvals, role changes, deletions and timetable edits.
+9. Store the session in encrypted storage. Clear it on logout.
+10. Use synthetic data until the university approves real data.
+Test both directions: write SQL tests proving permitted actions succeed and forbidden ones fail (a student editing an announcement, a lecturer editing another lecturer's course, a user promoting themselves).
+11. Notifications
+* Database trigger or Edge Function creates notifications rows when an announcement is published or a session changes.
+* Edge Function sends FCM messages to the recipients' device tokens.
+* A scheduled function sends deadline reminders.
+* The in-app inbox is the source of truth. Push is only a nudge.
+* Users control preferences per type (announcements, timetable, deadlines).
+12. Project structure
+campusconnect/
+├── app/src/main/java/.../campusconnect/
+│   ├── App.kt
+│   ├── MainActivity.kt
+│   ├── di/                 (Hilt modules)
+│   ├── data/
+│   │   ├── remote/         (supabase-kt clients)
+│   │   ├── local/          (Room entities, DAOs)
+│   │   └── repository/
+│   ├── domain/             (models, use cases)
+│   ├── ui/
+│   │   ├── theme/          (colours, type, shapes)
+│   │   ├── components/     (shared composables)
+│   │   ├── auth/
+│   │   ├── home/
+│   │   ├── timetable/
+│   │   ├── announcements/
+│   │   ├── materials/
+│   │   ├── calendar/
+│   │   ├── profile/
+│   │   └── admin/
+│   ├── sync/               (WorkManager)
+│   └── push/               (FCM service)
+├── supabase/
+│   ├── migrations/
+│   ├── functions/          (notify, reminders)
+│   └── tests/              (RLS tests)
+├── .github/workflows/      (build and test)
+└── README.md
+13. Roadmap
+Realistic target alongside coursework: 8 to 10 weeks to a pilot, not 4 to 6.
+Week
+	Focus
+	Deliverable
+	0
+	Talk to 3 lecturers and 10 students, get a department head's support, sketch screens
+	Validated need and permission
+	1
+	Supabase project, schema, migrations, RLS and tests
+	Secure database proven by tests
+	2
+	Android project, theme, auth, pending and approval flow, role-based home
+	Users sign in to the correct portal
+	3
+	Courses, offerings, enrollments, timetable with Room cache
+	Students see their timetable offline
+	4
+	Announcements, audience targeting, inbox, read status
+	One full workflow: lecturer posts, correct students read
+	5
+	FCM push, timetable change alerts, notification preferences
+	Alerts arrive reliably
+	6
+	Admin screens, audit log, polish, error and empty states
+	MVP complete
+	7
+	Testing on low-end phones and slow networks, bug fixes
+	Stable pilot build
+	8
+	Pilot with one department
+	Real feedback
+	9 to 10
+	Fix issues, add materials and deadlines if requested
+	Version 1.1
+	If time is short, cut in this order: calendar, materials, search, push (keep in-app inbox). Never cut security or offline timetable.
+14. Testing checklist
+* ☐ RLS tests cover permitted and forbidden operations
+* ☐ Pending accounts see no academic data
+* ☐ Students cannot change role or status
+* ☐ Lecturers cannot touch unassigned courses
+* ☐ Draft and unapproved content hidden from students
+* ☐ Timetable changes reach affected students only
+* ☐ Times show correctly in East Africa Time
+* ☐ App works offline after one sync
+* ☐ Usable on a low-end phone with 2 GB RAM
+* ☐ Cache and tokens cleared after logout
+* ☐ Uploads enforce size, type and authorization
+* ☐ Migrations and backups are versioned and recovery-tested
+15. Pilot and success measures
+Start with one programme, 30 to 60 students and 2 to 3 lecturers.
+* Adoption: invited students who finish registration.
+* Retention: weekly returning users after week 3.
+* Reliability: timetable changes and announcements correct and on time.
+* Usefulness: fewer missed announcements and deadlines (ask in a short survey).
+* Lecturer effort: posting here is faster than WhatsApp.
+* Performance: home screen loads fast on mobile data.
+Success means students open it daily because it is the trusted source, not just that they registered.
+16. Risks and how to handle themb
+Risk
+	Response
+	Lecturers stop posting
+	Make posting take under 30 seconds, get a department head to endorse it
+	Competing with WhatsApp habit
+	Be official and faster, offer optional "share to WhatsApp" later
+	No access to official data
+	Start with manual entry for one programme, pursue formal approval in parallel
+	Privacy and records rules
+	Synthetic data first, written approval before real student data
+	Free-tier limits
+	Monitor usage, compress PDFs, plan a paid tier and backups before wide launch
+	Solo developer burnout
+	Hold the MVP boundary, ship small, pilot early
+	17. Costs
+* Prototype and pilot: potentially TZS 0 on Supabase and Firebase free tiers (check current limits and pause policies).
+* Google Play developer account: one-time fee, or distribute the APK directly during the pilot.
+* Before wide launch: a paid database plan or reliable backups, and an optional domain.
+* Avoid paid SMS and AI services until demand is proven.
+18. Immediate next steps
+1. Interview 3 lecturers and 10 students, and ask one department head for support.
+2. Create the campusconnect GitHub repo and Supabase project.
+3. Write the SQL migration with tables, constraints, indexes, RLS policies and tests.
+4. Scaffold the Android app (Kotlin, Compose, Hilt, Room) and build auth with role-based home screens.
+5. Ship one complete workflow first: a lecturer publishes an announcement and only the correct enrolled students receive it.
+6. Expand to timetable, push, admin tools, then materials and deadlines.
+* ☐ The best starting deliverables are the Supabase SQL migration with RLS and the Compose theme plus student Home screen. Tell me which one to write first.

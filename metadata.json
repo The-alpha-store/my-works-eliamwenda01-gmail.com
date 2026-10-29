@@ -1,0 +1,6 @@
+{
+  "name": "CampusConnect",
+  "description": "Unified academic hub for timetables, official announcements, course materials, and deadlines for students and lecturers in Tanzania.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,261 @@
+name: CampusConnect CI, Database and Deployment
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy_database:
+        description: Deploy pending Supabase migrations to production after checks
+        required: false
+        type: boolean
+        default: false
+      function_name:
+        description: Optional Supabase Edge Function to deploy
+        required: false
+        type: choice
+        options:
+          - none
+          - campus-wipe-files
+          - send-push
+        default: none
+
+permissions:
+  contents: read
+
+concurrency:
+  group: campus-connect-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android:
+    name: Android build, unit tests, lint and APK artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # This repository has no Gradle wrapper, so use the version compatible with the project.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      # app/build.gradle.kts configures this local debug keystore during Gradle configuration.
+      - name: Create temporary debug keystore
+        run: |
+          keytool -genkeypair -v -keystore debug.keystore \
+            -storepass android -keypass android -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Run unit tests
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Run Android lint
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: gradle --no-daemon :app:lintDebug
+
+      - name: Build debug APK
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Upload Android reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: campusconnect-android-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: campusconnect-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  database:
+    name: Supabase migrations, schema lint, RLS and limits tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase
+        run: supabase start -x realtime,studio,imgproxy,edge-runtime,logflare,vector,mailpit,postgres-meta,supavisor
+
+      # Seed data is used only in this disposable local test database, never in production deploys.
+      - name: Apply migrations and local seed from scratch
+        run: supabase db reset
+
+      - name: Verify migrations are re-runnable
+        run: |
+          for file in supabase/migrations/*.sql; do
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$file"
+          done
+
+      - name: Lint database schema
+        run: supabase db lint --level error --fail-on error
+
+      - name: Run pgTAP database tests
+        run: supabase test db
+
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup
+
+  migration_changes:
+    name: Detect production database changes
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      database: ${{ steps.filter.outputs.database }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            database:
+              - 'supabase/migrations/**'
+              - 'supabase/config.toml'
+
+  deploy_database:
+    name: Deploy Supabase migrations to production
+    needs: [android, database, migration_changes]
+    if: >-
+      always() && needs.android.result == 'success' && needs.database.result == 'success' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.migration_changes.outputs.database == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.deploy_database == true))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: campus-connect-production-database
+      cancel-in-progress: false
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Validate production secrets
+        run: |
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID; do
+            if [ -z "${!name}" ]; then echo "::error::Repository secret $name is missing"; exit 1; fi
+          done
+
+      - name: Link hosted project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Preview migration changes
+        run: supabase db push --dry-run
+
+      - name: Apply migrations (production seed is never run)
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+
+  deploy_function:
+    name: Deploy selected Supabase Edge Function
+    if: github.event_name == 'workflow_dispatch' && inputs.function_name != 'none'
+    needs: [android, database]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Validate deployment secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "::error::SUPABASE_ACCESS_TOKEN is missing"; exit 1; }
+          test -n "$SUPABASE_PROJECT_ID" || { echo "::error::SUPABASE_PROJECT_ID is missing"; exit 1; }
+      - name: Deploy selected function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          FUNCTION_NAME: ${{ inputs.function_name }}
+        run: supabase functions deploy "$FUNCTION_NAME" --project-ref "$SUPABASE_PROJECT_ID"
+
+  release_android:
+    name: Build and publish signed Android release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [android, database]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Restore upload keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then echo "::error::Secret KEYSTORE_BASE64 is missing"; exit 1; fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload-key.jks"
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/upload-key.jks" >> "$GITHUB_ENV"
+
+      - name: Create temporary debug keystore required for Gradle configuration
+        run: |
+          keytool -genkeypair -v -keystore debug.keystore \
+            -storepass android -keypass android -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Build signed release APK and bundle
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: gradle --no-daemon :app:assembleRelease :app:bundleRelease
+
+      - name: Publish GitHub release for version tag
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/build/outputs/bundle/release/*.aab
+            app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
